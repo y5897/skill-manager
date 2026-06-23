@@ -1,0 +1,28 @@
+{
+  "name": "skill-manager",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.6",
+    "@tauri-apps/cli": "^2.11.3",
+    "@types/react": "^19.1.4",
+    "@types/react-dom": "^19.1.5",
+    "esbuild": "^0.28.1",
+    "tailwindcss": "^4.1.6",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.12"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.7.1"
+  }
+}
