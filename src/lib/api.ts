@@ -7,6 +7,7 @@ import type {
   ScanResult,
   SyncReport,
   DashboardStats,
+  InstalledSkill,
 } from "../types";
 
 // ─── Agent ───
@@ -47,4 +48,12 @@ export const syncSkillToAgents = (skillId: string) =>
 export const syncAllSkills = () => invoke<SyncReport[]>("sync_all_skills");
 export const getDashboardStats = () => invoke<DashboardStats>("get_dashboard_stats");
 
-
+// ─── Marketplace ───
+export const installMarketplaceSkill = (downloadUrl: string, name: string, slug: string, repoOwner: string, repoName: string, version: string) =>
+  invoke<InstalledSkill>("install_marketplace_skill", { downloadUrl, name, slug, repoOwner, repoName, version });
+export const getInstalledSkills = () =>
+  invoke<InstalledSkill[]>("get_installed_skills");
+export const uninstallInstalledSkill = (id: string) =>
+  invoke<void>("uninstall_installed_skill", { id });
+export const updateInstalledSkill = (id: string, downloadUrl: string, newVersion: string) =>
+  invoke<InstalledSkill>("update_installed_skill", { id, downloadUrl, newVersion });

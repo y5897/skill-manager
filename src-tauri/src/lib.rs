@@ -98,6 +98,10 @@ pub fn run() {
             commands::skills::upload_files,
             commands::skills::remove_file,
             commands::skills::read_file_content,
+            commands::marketplace::install_marketplace_skill,
+            commands::marketplace::get_installed_skills,
+            commands::marketplace::uninstall_installed_skill,
+            commands::marketplace::update_installed_skill,
             sync_skill_to_agents,
             sync_all_skills,
         ])

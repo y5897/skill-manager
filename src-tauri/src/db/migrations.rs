@@ -68,5 +68,17 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         "CREATE INDEX IF NOT EXISTS idx_agent_skills_skill ON agent_skills(skill_id);",
     )?;
 
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS installed_skills (
+            id TEXT PRIMARY KEY,
+            skill_id TEXT NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+            repo_owner TEXT NOT NULL,
+            repo_name TEXT NOT NULL,
+            remote_version TEXT NOT NULL,
+            installed_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+            );",
+    )?;
+
     Ok(())
 }

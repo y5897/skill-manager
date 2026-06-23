@@ -79,3 +79,34 @@ export interface ActivityItem {
   message: string;
   time: string;
 }
+
+// ─── Marketplace ───
+export interface InstalledSkill {
+  id: string;
+  skill_id: string;
+  skill_name: string;
+  slug: string;
+  repo_owner: string;
+  repo_name: string;
+  remote_version: string;
+  installed_at: string;
+  updated_at: string;
+}
+
+export interface MarketplaceItem {
+  name: string;
+  slug: string;
+  full_name: string;
+  description: string;
+  stars: number;
+  owner: string;
+  repo: string;
+  default_branch: string;
+  html_url: string;
+  topics: string[];
+  updated_at: string;
+  latest_release?: {
+    tag_name: string;
+    download_url: string;
+  };
+}

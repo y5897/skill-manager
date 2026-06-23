@@ -28,6 +28,8 @@ sha2 = "0.10"
 walkdir = "2"
 whoami = "1"
 tauri-plugin-dialog = "2"
+ureq = "3"
+zip = "2"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

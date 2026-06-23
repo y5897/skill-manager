@@ -5,11 +5,13 @@ import Dashboard from "./pages/Dashboard";
 import AgentsPage from "./pages/AgentsPage";
 import SkillsPage from "./pages/SkillsPage";
 import SkillDetail from "./pages/SkillDetail";
+import MarketplacePage from "./pages/MarketplacePage";
 
 const navItems = [
   { to: "/", label: "仪表盘", icon: "📊" },
   { to: "/agents", label: "Agent 管理", icon: "🤖" },
   { to: "/skills", label: "Skill 资源库", icon: "🧩" },
+  { to: "/marketplace", label: "Skill 市场", icon: "🏪" },
 ];
 
 function App() {
@@ -60,6 +62,7 @@ function App() {
             <Route path="/agents" element={<AgentsPage />} />
             <Route path="/skills" element={<SkillsPage />} />
             <Route path="/skills/:id" element={<SkillDetail />} />
+            <Route path="/marketplace" element={<MarketplacePage />} />
           </Routes>
         </ErrorBoundary>
       </main>
