@@ -96,6 +96,30 @@ npm run tauri build
 
 ---
 
+## Skill 在线市场 | Marketplace
+
+Skill Manager 内置在线市场，可以从 GitHub 发现并一键安装社区共享的 Skill。
+
+### 安装 Skill
+
+1. 打开应用左侧导航栏的 **🏪 Skill 市场**
+2. 搜索或浏览可用的 Skill
+3. 点击 **安装** 按钮，自动下载并部署到所有 Agent 目录
+
+### 发布你的 Skill
+
+想让自己的 Skill 出现在市场中？只需三步：
+
+```bash
+# 1. 创建 GitHub 仓库，放入 SKILL.md 和技能文件
+# 2. 给仓库添加 topic: skill-manager-skill
+# 3. 发布 GitHub Release，附件为 Skill 文件的 .zip 包
+```
+
+> 建议仓库名 = Skill slug，Release 的 zip 中 SKILL.md 应在根目录。
+
+---
+
 ## 技术栈 | Tech Stack
 
 | 层 | 技术 |
