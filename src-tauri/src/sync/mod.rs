@@ -14,11 +14,6 @@ pub fn hash_content(content: &[u8]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-pub fn hash_file(path: &Path) -> Result<String, String> {
-    let content = fs::read(path).map_err(|e| format!("Read failed: {}", e))?;
-    Ok(hash_content(&content))
-}
-
 pub(crate) fn copy_dir_contents(src: &Path, dst: &Path) -> Result<(), String> {
     if !src.is_dir() {
         return Err("Source not a directory".to_string());
@@ -37,6 +32,80 @@ pub(crate) fn copy_dir_contents(src: &Path, dst: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Remove a skill directory from every active agent.
+pub fn remove_skill_from_all_agents(
+    conn: &Connection,
+    slug: &str,
+) -> Result<Vec<AgentSyncResult>, String> {
+    let mut stmt = conn
+        .prepare("SELECT id, name, skills_path FROM agents WHERE is_active = 1 ORDER BY created_at ASC")
+        .map_err(|e| e.to_string())?;
+    let agents: Vec<(String, String, String)> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut results = Vec::new();
+    for (agent_id, agent_name, raw_path) in agents {
+        let skill_dir = Path::new(&resolve_username(&raw_path)).join(slug);
+        let mut result = AgentSyncResult {
+            agent_id,
+            agent_name,
+            success: true,
+            error: None,
+        };
+        if skill_dir.exists() {
+            if let Err(e) = fs::remove_dir_all(&skill_dir) {
+                result.success = false;
+                result.error = Some(format!("Failed to remove dir: {}", e));
+            }
+        }
+        results.push(result);
+    }
+    Ok(results)
+}
+
+fn delete_skill_records(conn: &Connection, skill_id: &str, skill_name: &str) -> Result<(), String> {
+    conn.execute("DELETE FROM agent_skills WHERE skill_id = ?1", [skill_id])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM skill_files WHERE skill_id = ?1", [skill_id])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM skills WHERE id = ?1", [skill_id])
+        .map_err(|e| e.to_string())?;
+
+    let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    conn.execute(
+        "INSERT INTO activities (type, message, created_at) VALUES ('delete', ?1, ?2)",
+        rusqlite::params![format!("删除 Skill: {}", skill_name), now],
+    )
+    .ok();
+
+    Ok(())
+}
+
+/// Delete a skill from the database and every active agent directory.
+/// Returns the skill name on success.
+pub fn delete_skill_cascade(conn: &Connection, skill_id: &str) -> Result<String, String> {
+    let (name, slug): (String, String) = conn
+        .query_row(
+            "SELECT name, slug FROM skills WHERE id = ?1",
+            [skill_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| format!("Skill not found: {}", e))?;
+
+    remove_skill_from_all_agents(conn, &slug)?;
+    delete_skill_records(conn, skill_id, &name)?;
+    Ok(name)
+}
+
 pub fn sync_skill(conn: &Connection, skill_id: &str) -> Result<SyncReport, String> {
     let (skill_name, slug): (String, String) = conn
         .query_row(
@@ -47,38 +116,69 @@ pub fn sync_skill(conn: &Connection, skill_id: &str) -> Result<SyncReport, Strin
         .map_err(|e| format!("Skill not found: {}", e))?;
 
     let mut stmt = conn
-        .prepare("SELECT id, skills_path FROM agents WHERE is_active = 1")
+        .prepare("SELECT id, name, skills_path FROM agents WHERE is_active = 1 ORDER BY created_at ASC")
         .map_err(|e| e.to_string())?;
-    let agents: Vec<(String, String)> = stmt
+    let agents: Vec<(String, String, String)> = stmt
         .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
         })
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
 
-    let mut agent_results = Vec::new();
+    // The first active agent is the source of truth for this skill.
+    // If the skill no longer exists there, treat it as deleted and propagate
+    // the deletion to every other active agent.
+    let source_info = get_source_path(conn, &slug)?;
+    if source_info.is_none() {
+        let agent_results = remove_skill_from_all_agents(conn, &slug)?;
+        delete_skill_records(conn, skill_id, &skill_name)?;
+        return Ok(SyncReport {
+            skill_id: skill_id.to_string(),
+            skill_name,
+            agent_results,
+        });
+    }
 
-    for (agent_id, raw_path) in &agents {
+    let (source_agent_id, src) = source_info.unwrap();
+    let mut agent_results = Vec::new();
+    let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+    for (agent_id, agent_name, raw_path) in &agents {
         let agent_path = resolve_username(raw_path);
         let skill_dir = Path::new(&agent_path).join(&slug);
 
         let mut result = AgentSyncResult {
             agent_id: agent_id.clone(),
-            agent_name: agent_id.clone(),
+            agent_name: agent_name.clone(),
             success: true,
             error: None,
         };
 
-        if let Err(e) = fs::create_dir_all(&skill_dir) {
-            result.success = false;
-            result.error = Some(format!("Failed to create dir: {}", e));
-            agent_results.push(result);
-            continue;
-        }
+        // Skip deletion for the source agent to avoid destroying the source before copying.
+        if agent_id != &source_agent_id {
+            // Mirror the source directory exactly: remove stale files/folders,
+            // then recreate and copy the latest content.
+            if skill_dir.exists() {
+                if let Err(e) = fs::remove_dir_all(&skill_dir) {
+                    result.success = false;
+                    result.error = Some(format!("Failed to clean dir: {}", e));
+                    agent_results.push(result);
+                    continue;
+                }
+            }
 
-        let source_path = get_source_path(conn, &slug)?;
-        if let Some(src) = source_path {
+            if let Err(e) = fs::create_dir_all(&skill_dir) {
+                result.success = false;
+                result.error = Some(format!("Failed to create dir: {}", e));
+                agent_results.push(result);
+                continue;
+            }
+
             if let Err(e) = copy_dir_contents(Path::new(&src), &skill_dir) {
                 result.success = false;
                 result.error = Some(format!("Sync failed: {}", e));
@@ -87,8 +187,7 @@ pub fn sync_skill(conn: &Connection, skill_id: &str) -> Result<SyncReport, Strin
         agent_results.push(result);
     }
 
-    let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    for (agent_id, _) in &agents {
+    for (agent_id, _, _) in &agents {
         let success = agent_results
             .iter()
             .any(|r| r.agent_id == *agent_id && r.success);
@@ -113,17 +212,17 @@ pub fn sync_skill(conn: &Connection, skill_id: &str) -> Result<SyncReport, Strin
     })
 }
 
-fn get_source_path(conn: &Connection, slug: &str) -> Result<Option<String>, String> {
+fn get_source_path(conn: &Connection, slug: &str) -> Result<Option<(String, String)>, String> {
     let mut stmt = conn
-        .prepare("SELECT skills_path FROM agents WHERE is_active = 1 LIMIT 1")
+        .prepare("SELECT id, skills_path FROM agents WHERE is_active = 1 ORDER BY created_at ASC LIMIT 1")
         .map_err(|e| e.to_string())?;
-    let raw_path: String = stmt
-        .query_row([], |row| row.get(0))
+    let (agent_id, raw_path): (String, String) = stmt
+        .query_row([], |row| Ok((row.get(0)?, row.get(1)?)))
         .map_err(|_| "No active agent".to_string())?;
     let path = resolve_username(&raw_path);
     let full = Path::new(&path).join(slug);
     if full.exists() {
-        Ok(Some(full.to_string_lossy().to_string()))
+        Ok(Some((agent_id, full.to_string_lossy().to_string())))
     } else {
         Ok(None)
     }

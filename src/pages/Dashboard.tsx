@@ -27,7 +27,7 @@ export default function Dashboard() {
     setScanning(true);
     try {
       const r = await scanAllAgents();
-      toast(`扫描完成: ${r.agents_scanned} 个 Agent, ${r.skills_found} 个 Skill, 新增 ${r.new_skills}, 变更 ${r.changed_skills}`, "success");
+      toast(`扫描完成: ${r.agents_scanned} 个 Agent, ${r.skills_found} 个 Skill, 新增 ${r.new_skills}, 变更 ${r.changed_skills}, 删除 ${r.deleted_skills}`, "success");
       await load();
     } catch (e) {
       toast(`扫描失败: ${e}`, "error");

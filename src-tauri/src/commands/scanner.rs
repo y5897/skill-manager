@@ -210,11 +210,31 @@ pub fn scan_all_agents(db: State<Database>) -> Result<ScanResult, String> {
         }
     }
 
+    // Detect skills that have been removed from every active agent.
+    let mut deleted_skills: i64 = 0;
+    let mut db_stmt = conn
+        .prepare("SELECT id, slug FROM skills")
+        .map_err(|e| e.to_string())?;
+    let db_skills: Vec<(String, String)> = db_stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    for (skill_id, slug) in &db_skills {
+        if !all_skill_folders.contains_key(slug) {
+            if crate::sync::delete_skill_cascade(&conn, skill_id).is_ok() {
+                deleted_skills += 1;
+            }
+        }
+    }
+
     Ok(ScanResult {
         agents_scanned,
         skills_found,
         new_skills,
         changed_skills,
+        deleted_skills,
         errors,
     })
 }

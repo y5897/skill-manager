@@ -272,46 +272,15 @@ pub fn get_installed_skills(db: State<Database>) -> Result<Vec<InstalledSkill>, 
 pub fn uninstall_installed_skill(db: State<Database>, id: String) -> Result<(), String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
-    let (skill_id, slug): (String, String) = conn
+    let skill_id: String = conn
         .query_row(
-            "SELECT i.skill_id, s.slug FROM installed_skills i JOIN skills s ON s.id = i.skill_id WHERE i.id = ?1",
+            "SELECT skill_id FROM installed_skills WHERE id = ?1",
             [&id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| row.get(0),
         )
         .map_err(|e| format!("Installed skill not found: {}", e))?;
 
-    // Remove from agent directories
-    let mut astmt = conn
-        .prepare("SELECT skills_path FROM agents WHERE is_active = 1")
-        .map_err(|e| e.to_string())?;
-    let paths: Vec<String> = astmt
-        .query_map([], |row| row.get(0))
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    for raw_path in &paths {
-        let dir = Path::new(&resolve_username(raw_path)).join(&slug);
-        if dir.exists() {
-            fs::remove_dir_all(&dir).ok();
-        }
-    }
-
-    conn.execute("DELETE FROM agent_skills WHERE skill_id = ?1", [&skill_id])
-        .map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM skill_files WHERE skill_id = ?1", [&skill_id])
-        .map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM installed_skills WHERE id = ?1", [&id])
-        .map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM skills WHERE id = ?1", [&skill_id])
-        .map_err(|e| e.to_string())?;
-
-    let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    conn.execute(
-        "INSERT INTO activities (type, message, created_at) VALUES ('delete', ?1, ?2)",
-        rusqlite::params![format!("卸载市场 Skill: {}", slug), now],
-    )
-    .ok();
+    crate::sync::delete_skill_cascade(&conn, &skill_id)?;
 
     Ok(())
 }

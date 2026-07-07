@@ -49,6 +49,7 @@ export interface ScanResult {
   skills_found: number;
   new_skills: number;
   changed_skills: number;
+  deleted_skills: number;
   errors: string[];
 }
 

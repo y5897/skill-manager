@@ -63,6 +63,7 @@ pub struct ScanResult {
     pub skills_found: i64,
     pub new_skills: i64,
     pub changed_skills: i64,
+    pub deleted_skills: i64,
     pub errors: Vec<String>,
 }
 
